@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Verifikasi Kesesuaian GP Report — APO Six Steps & Thirteen Tasks</title>
-  <meta name="description" content="Unggah laporan GP dan verifikasi ketat kesesuaian metodologi APO, hasil akhir 'Sesuai' atau 'Tidak Sesuai', lalu unduh TXT berisi rekomendasi." />
+  <meta name="description" content="Unggah GP report dan verifikasi APO Six Steps & Thirteen Tasks dengan status 'Sesuai' / 'Tidak Sesuai'. Non-blocking, progress, cancel, TXT rekomendasi." />
   <link rel="preconnect" href="https://unpkg.com">
   <style>
     :root{
@@ -12,7 +12,7 @@
       --brand:#4fd1c5;--accent:#a78bfa;--bad:#ef4444;--good:#10b981;--warn:#f59e0b;
       --border:#1a2440;--ink-dark:#07121e
     }
-    html,body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial;margin:0}
+    html,body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;margin:0}
     a{color:var(--brand);text-decoration:none} a:hover{text-decoration:underline}
     .wrap{max-width:1080px;margin:24px auto;padding:0 16px}
     .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 6px 18px rgba(0,0,0,.25)}
@@ -50,9 +50,10 @@
     @media (max-width:760px){.grid{grid-template-columns:1fr}}
   </style>
 
-  <!-- APO logo + libs -->
+  <!-- PDF.js (legacy UMD exposes window.pdfjsLib) -->
   <script defer src="https://unpkg.com/pdfjs-dist@3.10.111/legacy/build/pdf.min.js"></script>
   <script defer src="https://unpkg.com/pdfjs-dist@3.10.111/legacy/build/pdf.worker.min.js"></script>
+  <!-- DOCX -->
   <script defer src="https://unpkg.com/mammoth@1.7.0/mammoth.browser.min.js"></script>
 </head>
 <body>
@@ -65,7 +66,7 @@
     </div>
 
     <div class="title">Verifikasi Kesesuaian GP Report</div>
-    <div class="sub">Unggah GP report (PDF/DOCX/TXT), klik <b>Jalankan Verifikasi</b>. Mode default adalah <b>Mode Cepat (sampling halaman)</b> agar tidak macet. Anda bisa matikan untuk verifikasi penuh.</div>
+    <div class="sub">Default: <b>Mode Cepat (sampling 10%, maks 30 halaman)</b> untuk mencegah hang. Nonaktifkan jika ingin verifikasi penuh (lebih lambat).</div>
 
     <div class="card">
       <div class="row">
@@ -86,10 +87,10 @@
             <button id="exportTxt" class="ghost">Unduh TXT</button>
             <button id="exportJson" class="ghost">Ekspor JSON</button>
           </div>
-          <label><input type="checkbox" id="fastMode" checked /> Mode Cepat (proses ±20% halaman, maks 40 halaman)</label>
+          <label><input type="checkbox" id="fastMode" checked /> Mode Cepat (sampling)</label>
         </div>
       </div>
-      <div class="small" style="margin-top:8px">Tips: bila PDF sangat besar/bergambar, konversi ke TXT/DOCX dulu untuk verifikasi tercepat.</div>
+      <div class="small" style="margin-top:8px">Jika masih lambat, konversi laporan ke <b>DOCX</b> atau <b>TXT</b> dulu lalu unggah kembali.</div>
     </div>
 
     <div id="status" class="card" style="display:none"></div>
@@ -102,184 +103,157 @@
   </div>
 
 <script>
-/* ==== Utils & UI helpers ==== */
+/* ===== Utils & UI ===== */
 const el = s => document.querySelector(s);
 const escapeHTML = s => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const toPct = n => (Math.round(n*1000)/10).toFixed(1)+'%';
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const nextFrame = () => new Promise(r=>requestAnimationFrame(()=>r()));
-
-function findAll(text, regex){const out=[];let m;while((m=regex.exec(text))!==null) out.push({index:m.index,match:m[0]});return out;}
-function ctx(text, idx, span=140){const s=Math.max(0,idx-span),e=Math.min(text.length,idx+span);return text.slice(s,e);}
-function scoreBool(ok,w=1){return ok?1*w:0}
 function showProgress(show){el('#progBox').style.display = show ? 'block' : 'none'}
 function setProgress(pct, label){el('#progBar').style.width = pct+'%'; el('#progText').textContent = label || ''}
 
-/* ==== Config ==== */
-const MAX_FILE_MB = 25;
+/* ===== Konfigurasi ===== */
+const MAX_FILE_MB = 30;            // batasi beban
+const PDF_SAMPLE_RATIO = 0.10;     // 10% halaman
+const PDF_SAMPLE_CAP   = 30;       // maksimal 30 halaman saat sampling
 
-/* ==== APO signal sets (sama seperti versi sebelumnya) ==== */
-const TASKS = [
-  { step:1, code:'T1', name:'Team Formation', keys:[/tim gp|team gp|ketua|anggota|fasilitator|steering/i,/dukungan manajemen|komitmen manajemen|persetujuan/i] },
-  { step:1, code:'T2', name:'Walk-through survey & information collection', keys:[/survei|walk-?through|observasi|pengumpulan data|baseline/i] },
-  { step:1, code:'T3', name:'Identification of problems & causes', keys:[/identifikasi masalah|akar penyebab|fish ?bone|5 why|diagram iceberg/i] },
-  { step:2, code:'T4', name:'Setting objectives & targets', keys:[/tujuan|sasaran|target|kpi|indikator kinerja/i] },
-  { step:3, code:'T5', name:'Generating GP options', keys:[/opsi gp|alternatif solusi|pilihan perbaikan|ide perbaikan/i] },
-  { step:3, code:'T6', name:'Screening, evaluating, prioritizing options', keys:[/screening|prioritasi|evaluasi opsi|matr(i|e)ks pemilihan|kriteria/i] },
-  { step:4, code:'T7', name:'Formulating GP implementation plans', keys:[/rencana implementasi|implementation plan|5w\+1h|timeline|jadwal/i] },
-  { step:4, code:'T8', name:'Implementing selected options', keys:[/implementasi|pelaksanaan|pilot|roll[- ]?out|uji coba/i] },
-  { step:5, code:'T9', name:'Training, awareness & competence', keys:[/pelatihan|training|sosialisasi|kompeten|awareness/i] },
-  { step:5, code:'T10', name:'Monitoring & evaluating results', keys:[/monitor(ing)?|evaluasi|m\&e|kirk.?patrick|kpi tercapai/i] },
-  { step:5, code:'T11', name:'Management review', keys:[/tinjauan manajemen|management review|rapat tinjauan/i] },
-  { step:6, code:'T12', name:'Integrate into management systems', keys:[/standarisasi|standardisasi|sop|iso 14001|integrasi ke sistem manajemen/i] },
-  { step:6, code:'T13', name:'Identify new/additional problem areas', keys:[/continuous improvement|perbaikan berkelanjutan|temuan baru|masalah baru/i] },
-];
+/* ===== Web Worker untuk VERIFIKASI (non-blocking) ===== */
+const workerCode = `
+self.onmessage = (ev)=>{
+  const {cmd, payload} = ev.data||{};
+  if(cmd!=='verify') return;
+  const {text} = payload;
 
-const ENV_SIGNALS = [
-  {code:'ENV1', name:'Energi', keys:[/kwh|energi listrik|efisiensi energi|power|energi|kva|kvar/i]},
-  {code:'ENV2', name:'Air', keys:[/\bm3\b|meter kubik|air baku|water consumption|reuse|recycle/i]},
-  {code:'ENV3', name:'Limbah', keys:[/limbah|timbulan|b3\b|olah limbah|3r|reduce reuse recycle/i]},
-  {code:'ENV4', name:'Emisi/GRK', keys:[/co2|co₂|ghg|gas rumah kaca|emisi|carbon footprint/i]},
-  {code:'ENV5', name:'Material/Bahan Kimia', keys:[/bahan baku|material|kimia|substitusi bahan|berbahaya/i]},
-];
+  function findAll(text, regex){const out=[];let m;while((m=regex.exec(text))!==null) out.push({i:m.index});return out;}
+  const TASKS = [
+    { s:1, c:'T1', n:'Team Formation', k:[/tim gp|team gp|ketua|anggota|fasilitator|steering/i,/dukungan manajemen|komitmen manajemen|persetujuan/i] },
+    { s:1, c:'T2', n:'Walk-through survey & information collection', k:[/survei|walk-?through|observasi|pengumpulan data|baseline/i] },
+    { s:1, c:'T3', n:'Identification of problems & causes', k:[/identifikasi masalah|akar penyebab|fish ?bone|5 why|diagram iceberg/i] },
+    { s:2, c:'T4', n:'Setting objectives & targets', k:[/tujuan|sasaran|target|kpi|indikator kinerja/i] },
+    { s:3, c:'T5', n:'Generating GP options', k:[/opsi gp|alternatif solusi|pilihan perbaikan|ide perbaikan/i] },
+    { s:3, c:'T6', n:'Screening, evaluating, prioritizing options', k:[/screening|prioritasi|evaluasi opsi|matr(i|e)ks pemilihan|kriteria/i] },
+    { s:4, c:'T7', n:'Formulating GP implementation plans', k:[/rencana implementasi|implementation plan|5w\\+1h|timeline|jadwal/i] },
+    { s:4, c:'T8', n:'Implementing selected options', k:[/implementasi|pelaksanaan|pilot|roll[- ]?out|uji coba/i] },
+    { s:5, c:'T9', n:'Training, awareness & competence', k:[/pelatihan|training|sosialisasi|kompeten|awareness/i] },
+    { s:5, c:'T10', n:'Monitoring & evaluating results', k:[/monitor(ing)?|evaluasi|m\\&e|kirk.?patrick|kpi tercapai/i] },
+    { s:5, c:'T11', n:'Management review', k:[/tinjauan manajemen|management review|rapat tinjauan/i] },
+    { s:6, c:'T12', n:'Integrate into management systems', k:[/standarisasi|standardisasi|sop|iso 14001|integrasi ke sistem manajemen/i] },
+    { s:6, c:'T13', n:'Identify new/additional problem areas', k:[/continuous improvement|perbaikan berkelanjutan|temuan baru|masalah baru/i] },
+  ];
+  const ENV = [
+    {c:'ENV1', n:'Energi', k:[/kwh|energi listrik|efisiensi energi|power|energi|kva|kvar/i]},
+    {c:'ENV2', n:'Air',    k:[/\\bm3\\b|meter kubik|air baku|water consumption|reuse|recycle/i]},
+    {c:'ENV3', n:'Limbah', k:[/limbah|timbulan|b3\\b|olah limbah|3r|reduce reuse recycle/i]},
+    {c:'ENV4', n:'Emisi/GRK', k:[/co2|co₂|ghg|gas rumah kaca|emisi|carbon footprint/i]},
+    {c:'ENV5', n:'Material/Bahan Kimia', k:[/bahan baku|material|kimia|substitusi bahan|berbahaya/i]},
+  ];
+  const M = [
+    {c:'M1', n:'PDCA', k:[/pdca|plan[- ]do[- ]check[- ]act/i], w:.2},
+    {c:'M2', n:'Baseline → After', k:[/(sebelum|baseline).{0,40}(sesudah|after|post)|pre.{0,20}post/i], w:.3},
+    {c:'M3', n:'CBA/ROI', k:[/roi|cba|benefit[- ]cost|bc ratio|payback/i], w:.2},
+    {c:'M4', n:'Kuantifikasi & Satuan', k:[/\\d+(\\.\\d+)?\\s?(%|kwh|m3|ton|kg|rp|usd|ppm)/i], w:.2},
+    {c:'M5', n:'Dokumentasi/Bukti', k:[/lampiran|annex|dokumentasi|evidence/i], w:.1},
+  ];
 
-const METHOD_SIGNALS = [
-  {code:'M1', name:'PDCA', keys:[/pdca|plan[- ]do[- ]check[- ]act/i]},
-  {code:'M2', name:'Baseline → After', keys:[/(sebelum|baseline).{0,40}(sesudah|after|post)|pre.{0,20}post/i]},
-  {code:'M3', name:'CBA/ROI', keys:[/roi|cba|benefit[- ]cost|bc ratio|payback/i]},
-  {code:'M4', name:'Kuantifikasi & Satuan', keys:[/\d+(\.\d+)?\s?(%|kwh|m3|ton|kg|rp|usd|ppm)/i]},
-  {code:'M5', name:'Dokumentasi/Bukti', keys:[/lampiran|annex|dokumentasi|evidence/i]}
-];
-
-/* ==== Readers dengan progress & sampling ==== */
-async function readFileAsText(file, {fastMode=true, onProgress=()=>{}}){
-  const ext = file.name.toLowerCase().split('.').pop();
-
-  if(ext==='txt' || ext==='md'){
-    const t = await file.text();
-    onProgress(100,'Selesai (TXT/MD).'); return t;
-  }
-  if(ext==='docx'){
-    onProgress(5,'Membuka DOCX…');
-    const buf = await file.arrayBuffer();
-    const res = await window.mammoth.extractRawText({arrayBuffer:buf});
-    onProgress(100,'Selesai (DOCX).'); return res.value || '';
-  }
-  if(ext==='pdf'){
-    const mb = file.size/1024/1024;
-    if(mb > MAX_FILE_MB) {
-      throw new Error(`Ukuran PDF ${mb.toFixed(1)} MB > batas ${MAX_FILE_MB} MB. Kompres PDF atau ekspor ke TXT untuk verifikasi cepat.`);
-    }
-    // Pastikan workerSrc cocok dengan build legacy:
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      "https://unpkg.com/pdfjs-dist@3.10.111/legacy/build/pdf.worker.min.js";
-
-    onProgress(5,'Memuat PDF…');
-    const buf = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({data:buf, isEvalSupported:false}).promise;
-    const total = pdf.numPages;
-
-    // Strategi sampling cepat:
-    let pages = [];
-    if(fastMode && total>10){
-      const sampleCount = Math.min(40, Math.max(10, Math.ceil(total*0.2)));
-      const step = Math.max(1, Math.ceil(total / sampleCount));
-      for(let p=1; p<=total; p+=step) pages.push(p);
-      if(pages[pages.length-1] !== total) pages.push(total); // pastikan halaman terakhir ikut
-    }else{
-      for(let p=1; p<=total; p++) pages.push(p);
-    }
-
-    let full = '', done = 0;
-    for(const p of pages){
-      const page = await pdf.getPage(p);
-      const content = await page.getTextContent({ disableCombineTextItems:false });
-      const str = content.items.map(it=>it.str).join(' ');
-      full += `\n\n[HALAMAN ${p}/${total}] ` + str;
-      done++;
-      const pct = Math.round((done/pages.length)*100);
-      onProgress(pct, `Ekstraksi halaman ${done} dari ${pages.length} ${fastMode?'(sampling)':''}…`);
-      // Beri kesempatan UI merender
-      await nextFrame();
-    }
-    onProgress(100, 'Ekstraksi PDF selesai.');
-    return full;
-  }
-  throw new Error('Format tidak didukung. Gunakan PDF, DOCX, TXT, atau MD.');
-}
-
-/* ==== Engine verifikasi (sama) ==== */
-function verify(text){
-  const evid = { tasks:{}, env:{}, methods:{}, gaps:[] };
-  const src = text.replace(/\s+/g,' ').trim();
+  const src = text.replace(/\\s+/g,' ').trim();
+  const evid = {tasks:{}, env:{}, methods:{}, gaps:[]};
 
   TASKS.forEach(t=>{
-    const hits = t.keys.map(k=>findAll(src,k)).flat();
-    evid.tasks[t.code] = {step:t.step, name:t.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
+    const hits = t.k.map(r=>findAll(src,r)).flat();
+    evid.tasks[t.c] = {step:t.s, name:t.n, hits:hits.length};
+  });
+  ENV.forEach(s=>{
+    const hits = s.k.map(r=>findAll(src,r)).flat();
+    evid.env[s.c] = {name:s.n, hits:hits.length};
+  });
+  M.forEach(m=>{
+    const hits = m.k.map(r=>findAll(src,r)).flat();
+    evid.methods[m.c] = {name:m.n, hits:hits.length, w:m.w};
   });
 
-  ENV_SIGNALS.forEach(s=>{
-    const hits = s.keys.map(k=>findAll(src,k)).flat();
-    evid.env[s.code] = {name:s.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
+  const stepCoverage=[1,2,3,4,5,6].map(st=>{
+    const ts = TASKS.filter(x=>x.s===st);
+    const covered = ts.filter(x=>evid.tasks[x.c].hits>0).length;
+    return covered/ts.length;
   });
-
-  METHOD_SIGNALS.forEach(m=>{
-    const hits = m.keys.map(k=>findAll(src,k)).flat();
-    evid.methods[m.code] = {name:m.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
-  });
-
-  const stepCoverage = [1,2,3,4,5,6].map(step=>{
-    const stepTasks = TASKS.filter(t=>t.step===step);
-    const covered = stepTasks.filter(t=>evid.tasks[t.code].hits>0).length;
-    return covered/stepTasks.length;
-  });
-
-  const envScore = Object.values(evid.env).reduce((a,b)=>a+(b.hits>0?1:0),0)/ENV_SIGNALS.length;
-  const methodBase = (evid.methods.M1.hits>0?0.2:0) + (evid.methods.M2.hits>0?0.3:0) + (evid.methods.M3.hits>0?0.2:0) + (evid.methods.M4.hits>0?0.2:0) + (evid.methods.M5.hits>0?0.1:0);
+  const envScore = Object.values(evid.env).reduce((a,b)=>a+(b.hits>0?1:0),0)/ENV.length;
+  const methodBase = Object.values(evid.methods).reduce((a,b)=>a + (b.hits>0?b.w:0),0);
   const tasksAvg = stepCoverage.reduce((a,b)=>a+b,0)/stepCoverage.length;
   const composite = (tasksAvg*0.6) + (envScore*0.25) + (methodBase*0.15);
   const pass = composite>=0.68 && tasksAvg>=0.60 && envScore>=0.40 && methodBase>=0.40;
 
   if(envScore<0.40) evid.gaps.push('Indikator dampak lingkungan (energi/air/limbah/emisi/material) kurang lengkap.');
-  if(evid.methods.M2.hits===0) evid.gaps.push('Tidak ditemukan bukti baseline → after (pre/post) yang terukur.');
-  if(evid.methods.M1.hits===0) evid.gaps.push('Tidak ada penyebutan/indikasi penerapan PDCA.');
-  if(evid.methods.M3.hits===0) evid.gaps.push('Tidak ada analisis ekonomi (ROI/CBA/BC Ratio/Payback).');
-  if(evid.methods.M4.hits===0) evid.gaps.push('Minim kuantifikasi dengan satuan (%/kWh/m3/ton/Rp).');
+  if(!evid.methods.M2 || evid.methods.M2.hits===0) evid.gaps.push('Tidak ditemukan bukti baseline → after (pre/post) yang terukur.');
+  if(!evid.methods.M1 || evid.methods.M1.hits===0) evid.gaps.push('Tidak ada penyebutan/indikasi penerapan PDCA.');
+  if(!evid.methods.M3 || evid.methods.M3.hits===0) evid.gaps.push('Tidak ada analisis ekonomi (ROI/CBA/BC Ratio/Payback).');
+  if(!evid.methods.M4 || evid.methods.M4.hits===0) evid.gaps.push('Minim kuantifikasi dengan satuan (%/kWh/m3/ton/Rp).');
   if(stepCoverage[1] < .5) evid.gaps.push('Langkah 2 (Planning & Information Collection) belum memadai.');
   if(stepCoverage[4] < .5) evid.gaps.push('Langkah 5 (Monitoring & Review) belum memadai.');
   if(stepCoverage[5] < .5) evid.gaps.push('Langkah 6 (Sustaining/Standarisasi) belum memadai.');
 
-  return {evid, stepCoverage, envScore, methodBase, tasksAvg, composite, pass, raw:text};
+  self.postMessage({ok:true, result:{evid, stepCoverage, envScore, methodBase, tasksAvg, composite, pass}});
+};`;
+const worker = new Worker(URL.createObjectURL(new Blob([workerCode],{type:'application/javascript'})));
+
+/* ===== Ekstraksi file (dengan sampling & yield) ===== */
+async function readFileAsText(file, {fastMode=true, onProgress=()=>{}}){
+  const ext = file.name.toLowerCase().split('.').pop();
+  if(ext==='txt' || ext==='md'){
+    onProgress(100,'Selesai (TXT/MD)'); return await file.text();
+  }
+  if(ext==='docx'){
+    onProgress(5,'Membuka DOCX…');
+    const buf = await file.arrayBuffer();
+    const res = await window.mammoth.extractRawText({arrayBuffer:buf});
+    onProgress(100,'Selesai (DOCX)'); return res.value||'';
+  }
+  if(ext==='pdf'){
+    const mb=file.size/1024/1024;
+    if(mb>MAX_FILE_MB) throw new Error(`PDF ${mb.toFixed(1)} MB > batas ${MAX_FILE_MB} MB. Kompres atau unggah versi DOCX/TXT.`);
+    pdfjsLib.GlobalWorkerOptions.workerSrc="https://unpkg.com/pdfjs-dist@3.10.111/legacy/build/pdf.worker.min.js";
+    onProgress(5,'Memuat PDF…');
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf,isEvalSupported:false,stopAtErrors:true}).promise;
+    const total=pdf.numPages;
+
+    // pilih halaman
+    let pages=[];
+    if(fastMode && total>10){
+      const sampleCount=Math.min(PDF_SAMPLE_CAP, Math.max(8, Math.ceil(total*PDF_SAMPLE_RATIO)));
+      const step=Math.max(1, Math.ceil(total/sampleCount));
+      for(let p=1;p<=total;p+=step) pages.push(p);
+      if(pages.at(-1)!==total) pages.push(total);
+    }else{
+      for(let p=1;p<=total;p++) pages.push(p);
+    }
+
+    let full='', done=0;
+    for(const p of pages){
+      const page=await pdf.getPage(p);
+      const content=await page.getTextContent({disableCombineTextItems:false});
+      const str=content.items.map(it=>it.str).join(' ');
+      full+=`\n\n[HAL ${p}/${total}] `+str;
+      done++;
+      const pct=Math.round((done/pages.length)*100);
+      onProgress(pct,`Ekstraksi ${done}/${pages.length} ${fastMode?'(sampling)':''}…`);
+      await nextFrame(); // beri UI bernafas
+    }
+    onProgress(100,'Ekstraksi PDF selesai.');
+    return full;
+  }
+  throw new Error('Format tidak didukung.');
 }
 
-/* ==== Rekomendasi ==== */
-function generateRecommendations(v){
-  const R = [];
-  if(!v.pass){ R.push('Prioritaskan pemenuhan syarat minimum (lingkungan & metodologi) hingga ambang lulus terpenuhi.'); }
-  if(v.envScore < 0.40) R.push('- Perluas indikator lingkungan (energi, air, limbah, emisi/GRK, material) lengkap baseline-target.');
-  if(v.evid.methods.M2.hits===0) R.push('- Tambahkan data pre/post (baseline → after) per indikator kunci.');
-  if(v.evid.methods.M1.hits===0) R.push('- Terapkan & buktikan PDCA pada tiap opsi GP.');
-  if(v.evid.methods.M3.hits===0) R.push('- Sertakan analisis ekonomi (ROI/BC Ratio/Payback).');
-  if(v.evid.methods.M4.hits===0) R.push('- Gunakan satuan (kWh, m3, ton, Rp, %) + konversi CO₂eq.');
-  if(v.stepCoverage[1] < .5) R.push('- Perkuat Langkah 2: baseline proses/lingkungan (material & energy balance).');
-  if(v.stepCoverage[4] < .5) R.push('- Perkuat Langkah 5: monitoring-evaluasi terjadwal (indikator, metode, frekuensi, PIC).');
-  if(v.stepCoverage[5] < .5) R.push('- Perkuat Langkah 6: standarisasi (SOP/ISO 14001) dan rencana replikasi.');
-  if(R.length===0) R.push('Dokumentasi sudah kuat. Lanjutkan replikasi lintas unit dan integrasi ke SOP/ISO 14001.');
-  return R.join('\n');
-}
-
-/* ==== Renderers (ringkas) ==== */
+/* ===== Render helpers (ringkas) ===== */
 function bar(n){return `<div class="progress"><span style="width:${(n*100).toFixed(1)}%"></span></div>`;}
 function renderStatus(v,file){
-  const cls = v.pass ? 'ok' : 'bad';
-  const label = v.pass ? 'Sesuai' : 'Tidak Sesuai';
-  const reasons = v.pass ? '' : `<ul class="why">${v.evid.gaps.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>`;
+  const cls=v.pass?'ok':'bad', label=v.pass?'Sesuai':'Tidak Sesuai';
+  const reasons=v.pass?'':`<ul class="why">${v.evid.gaps.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>`;
   el('#status').style.display='block';
-  el('#status').innerHTML = `
+  el('#status').innerHTML=`
     <div class="status">
       <div class="badge ${cls}">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          ${v.pass?'<path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>':'<path d="M6 6l12 12M18 6l-12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'}
+          ${v.pass?'<path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2"/>':'<path d="M6 6l12 12M18 6l-12 12" stroke="currentColor" stroke-width="2"/>'}
           <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"></circle>
         </svg>
         Status Akhir: ${label}
@@ -287,55 +261,84 @@ function renderStatus(v,file){
       <div class="small">Berkas: <b>${escapeHTML(file.name)}</b></div>
     </div>${reasons}`;
 }
-function renderMeta(file, text){
-  const words = text.trim().split(/\s+/).length;
+function renderMeta(file,text){
+  const words=text.trim().split(/\s+/).length;
   el('#meta').style.display='block';
-  el('#meta').innerHTML = `
-  <div class="row"><div class="col">
-    <div><b>Nama berkas:</b> ${escapeHTML(file.name)}</div>
-    <div><b>Ukuran:</b> ${(file.size/1024).toFixed(1)} KB</div>
-    <div><b>Perkiraan kata:</b> ${words.toLocaleString('id-ID')}</div></div>
-  <div class="col"><span class="pill">APO Six Steps</span><span class="pill">13 Tasks</span><span class="pill">Env & ROI</span><span class="pill">Client-side</span></div></div>`;
+  el('#meta').innerHTML=`
+    <div class="row">
+      <div class="col">
+        <div><b>Nama berkas:</b> ${escapeHTML(file.name)}</div>
+        <div><b>Ukuran:</b> ${(file.size/1024).toFixed(1)} KB</div>
+        <div><b>Perkiraan kata:</b> ${words.toLocaleString('id-ID')}</div>
+      </div>
+      <div class="col"><span class="pill">APO Six Steps</span><span class="pill">13 Tasks</span><span class="pill">Env & ROI</span><span class="pill">Client-side</span></div>
+    </div>`;
 }
 function renderScores(v){
   el('#scores').style.display='block';
-  el('#scores').innerHTML = `
+  el('#scores').innerHTML=`
   <div class="grid">
-    <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Tugas APO</b> <span style="float:right">${toPct(v.tasksAvg)}</span></div>${bar(v.tasksAvg)}</div>
-    <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Lingkungan</b> <span style="float:right">${toPct(v.envScore)}</span></div>${bar(v.envScore)}</div>
-    <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Metodologi</b> <span style="float:right">${toPct(v.methodBase)}</span></div>${bar(v.methodBase)}</div>
-    <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Komposit</b> <span style="float:right">${toPct(v.composite)}</span></div>${bar(v.composite)}<div class="small">Bobot: Tasks 60% • Lingkungan 25% • Metode 15%</div></div>
+    <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Tugas APO</b><span style="float:right">${toPct(v.tasksAvg)}</span></div>${bar(v.tasksAvg)}</div>
+    <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Lingkungan</b><span style="float:right">${toPct(v.envScore)}</span></div>${bar(v.envScore)}</div>
+    <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Metodologi</b><span style="float:right">${toPct(v.methodBase)}</span></div>${bar(v.methodBase)}</div>
+    <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Komposit</b><span style="float:right">${toPct(v.composite)}</span></div>${bar(v.composite)}<div class="small">Bobot: Tasks 60% • Lingkungan 25% • Metode 15%</div></div>
   </div>`;
 }
 function renderEvidence(v){
-  const blocks=[];
-  TASKS.forEach(t=>{const o=v.evid.tasks[t.code]; if(o.hits>0){blocks.push(`<div><b>${t.code} • ${escapeHTML(t.name)}</b>${o.samples.map(s=>`<div class="excerpt">${escapeHTML(s)}</div>`).join('')}</div>`)}});
-  ENV_SIGNALS.forEach(s=>{const o=v.evid.env[s.code]; if(o.hits>0){blocks.push(`<div><b>${s.code} • ${escapeHTML(s.name)}</b>${o.samples.map(x=>`<div class="excerpt">${escapeHTML(x)}</div>`).join('')}</div>`)}});
-  METHOD_SIGNALS.forEach(m=>{const o=v.evid.methods[m.code]; if(o.hits>0){blocks.push(`<div><b>${m.code} • ${escapeHTML(o.name)}</b>${o.samples.map(x=>`<div class="excerpt">${escapeHTML(x)}</div>`).join('')}</div>`)}});
+  const rowsEnv = Object.entries(v.evid.env).map(([k,o])=>`- ${k} ${o.name}: ${o.hits>0?'ADA':'TIDAK ADA'}`).join('<br>');
+  const rowsMet = Object.entries(v.evid.methods).map(([k,o])=>`- ${k} ${o.name}: ${o.hits>0?'ADA':'TIDAK ADA'}`).join('<br>');
   el('#evidence').style.display='block';
-  el('#evidence').innerHTML = `<h3 style="margin-top:0">Cuplikan Bukti</h3>${blocks.join('')||'<div class="small">Tidak ada bukti yang dapat ditampilkan.</div>'}`;
+  el('#evidence').innerHTML = `<h3 style="margin-top:0">Ringkasan Bukti</h3>
+  <div class="small"><b>Lingkungan</b><br>${rowsEnv}</div>
+  <div class="small" style="margin-top:8px"><b>Metodologi</b><br>${rowsMet}</div>`;
 }
 
-/* ==== Wiring ==== */
+/* ===== Rekomendasi ===== */
+function generateRecommendations(v){
+  const R=[];
+  if(!v.pass) R.push('Prioritaskan pemenuhan syarat minimum (lingkungan & metodologi) hingga ambang lulus terpenuhi.');
+  if(v.envScore<0.40) R.push('- Perluas indikator lingkungan (energi, air, limbah, emisi/GRK, material) lengkap baseline & target.');
+  if(!v.evid.methods.M2 || v.evid.methods.M2.hits===0) R.push('- Tambahkan data pre/post (baseline → after) setiap indikator.');
+  if(!v.evid.methods.M1 || v.evid.methods.M1.hits===0) R.push('- Terapkan & dokumentasikan PDCA.');
+  if(!v.evid.methods.M3 || v.evid.methods.M3.hits===0) R.push('- Sertakan analisis ekonomi (ROI/BC Ratio/Payback).');
+  if(!v.evid.methods.M4 || v.evid.methods.M4.hits===0) R.push('- Gunakan satuan (kWh, m3, ton, Rp, %) + konversi CO₂eq.');
+  if(v.stepCoverage[1] < .5) R.push('- Perkuat Langkah 2: baseline proses & lingkungan (material/energy balance).');
+  if(v.stepCoverage[4] < .5) R.push('- Perkuat Langkah 5: monitoring-evaluasi terjadwal (indikator, metode, frekuensi, PIC).');
+  if(v.stepCoverage[5] < .5) R.push('- Perkuat Langkah 6: standarisasi (SOP/ISO 14001) & rencana replikasi.');
+  if(R.length===0) R.push('Dokumentasi sudah kuat. Lanjutkan replikasi lintas unit dan integrasi ke SOP/ISO 14001.');
+  return R.join('\n');
+}
+
+/* ===== Wiring ===== */
 let cancelRun=false, lastResult=null, lastText='', lastFile=null;
-
 el('#cancel').addEventListener('click', ()=>{ cancelRun=true; });
-
 el('#reset').addEventListener('click', ()=>{
   ['#status','#meta','#scores','#matrix','#evidence'].forEach(s=>{el(s).style.display='none'; el(s).innerHTML='';});
   showProgress(false); setProgress(0,''); el('#file').value=''; lastResult=null; lastText=''; lastFile=null;
 });
+
+function verifyInWorker(text){
+  return new Promise((resolve,reject)=>{
+    const onMsg = (ev)=>{ worker.removeEventListener('message',onMsg); resolve(ev.data.result);}
+    worker.addEventListener('message', onMsg, {once:true});
+    worker.postMessage({cmd:'verify', payload:{text}});
+    // optional timeout safeguard
+    setTimeout(()=>{ try{worker.removeEventListener('message',onMsg);}catch{}; reject(new Error('Verifikasi melewati batas waktu. Coba Mode Cepat atau unggah DOCX/TXT.')); }, 45000);
+  });
+}
 
 el('#run').addEventListener('click', async ()=>{
   const file = el('#file').files[0];
   if(!file){ alert('Pilih berkas terlebih dahulu.'); return; }
   cancelRun=false;
   try{
-    if (typeof window.pdfjsLib === 'undefined') { throw new Error('pdfjsLib belum termuat. Muat ulang halaman (Ctrl+F5).'); }
+    if(file.name.toLowerCase().endsWith('.pdf') && typeof window.pdfjsLib === 'undefined'){
+      throw new Error('pdfjsLib belum termuat. Muat ulang halaman (Ctrl+F5).');
+    }
     el('#run').disabled=true; el('#run').textContent='Memproses…';
     showProgress(true); setProgress(1,'Menyiapkan…');
-    const fastMode = el('#fastMode').checked;
 
+    const fastMode = el('#fastMode').checked;
     const text = await readFileAsText(file,{
       fastMode,
       onProgress:(pct,label)=>{
@@ -344,10 +347,8 @@ el('#run').addEventListener('click', async ()=>{
       }
     });
 
-    setProgress(100,'Verifikasi…');
-    await nextFrame();
-
-    const v = verify(text);
+    setProgress(100,'Verifikasi (non-blocking)…');
+    const v = await verifyInWorker(text);
     lastResult=v; lastText=text; lastFile=file;
 
     renderStatus(v,file);
@@ -363,7 +364,7 @@ el('#run').addEventListener('click', async ()=>{
   }
 });
 
-/* ==== Exporters ==== */
+/* ===== Exporters ===== */
 el('#exportJson').addEventListener('click', ()=>{
   if(!lastResult){ alert('Belum ada hasil. Jalankan verifikasi dulu.'); return; }
   const data = {
@@ -381,18 +382,18 @@ el('#exportJson').addEventListener('click', ()=>{
 
 el('#exportTxt').addEventListener('click', ()=>{
   if(!lastResult){ alert('Belum ada hasil. Jalankan verifikasi dulu.'); return; }
-  const v = lastResult, fileName=(lastFile?.name||'report').replace(/\.[^.]+$/,'');
-  const lines = [];
+  const v=lastResult, fileName=(lastFile?.name||'report').replace(/\.[^.]+$/,'');
+  const lines=[];
   lines.push('=== HASIL VERIFIKASI GP REPORT (APO Six Steps & Thirteen Tasks) ===');
-  lines.push('Tanggal/Waktu   : ' + new Date().toLocaleString('id-ID'));
-  lines.push('Nama Berkas     : ' + (lastFile?.name||'-'));
-  lines.push('Status Akhir    : ' + (v.pass?'SESUAI':'TIDAK SESUAI'));
+  lines.push('Tanggal/Waktu   : '+new Date().toLocaleString('id-ID'));
+  lines.push('Nama Berkas     : '+(lastFile?.name||'-'));
+  lines.push('Status Akhir    : '+(v.pass?'SESUAI':'TIDAK SESUAI'));
   lines.push('');
   lines.push('--- SKOR ---');
-  lines.push('Skor Tugas APO  : ' + toPct(v.tasksAvg));
-  lines.push('Skor Lingkungan : ' + toPct(v.envScore));
-  lines.push('Skor Metodologi : ' + toPct(v.methodBase));
-  lines.push('Skor Komposit   : ' + toPct(v.composite));
+  lines.push('Skor Tugas APO  : '+toPct(v.tasksAvg));
+  lines.push('Skor Lingkungan : '+toPct(v.envScore));
+  lines.push('Skor Metodologi : '+toPct(v.methodBase));
+  lines.push('Skor Komposit   : '+toPct(v.composite));
   lines.push('');
   lines.push('--- GAP/ALASAN ---');
   if(v.evid.gaps.length){ v.evid.gaps.forEach((g,i)=>lines.push((i+1)+'. '+g)); } else { lines.push('(Tidak ada)'); }
@@ -401,9 +402,9 @@ el('#exportTxt').addEventListener('click', ()=>{
   lines.push(generateRecommendations(v));
   lines.push('');
   lines.push('Catatan: Pemeriksaan ini heuristik/indikatif dan tidak menggantikan audit manual.');
-  const txt = lines.join('\n');
-  const blob = new Blob([txt],{type:'text/plain;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
+  const txt=lines.join('\n');
+  const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
   const a=document.createElement('a'); a.href=url; a.download=fileName+'.apo-verification.txt';
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
 });
