@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Verifikasi Kesesuaian GP Report — APO Six Steps & Thirteen Tasks</title>
+  <meta name="description" content="Unggah laporan GP dan verifikasi ketat kesesuaian metodologi APO, hasil akhir 'Sesuai' atau 'Tidak Sesuai', lalu unduh laporan TXT berisi rekomendasi." />
+  <link rel="preconnect" href="https://unpkg.com">
+  <style>
+    :root{
+      --bg:#0b1220;--card:#10192b;--ink:#e6eefb;--muted:#a9b4c7;
+      --brand:#4fd1c5;--accent:#a78bfa;--bad:#ef4444;--good:#10b981;--warn:#f59e0b;
+      --border:#1a2440;--ink-dark:#07121e
+    }
+    html,body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial;margin:0}
+    a{color:var(--brand);text-decoration:none} a:hover{text-decoration:underline}
+    .wrap{max-width:1080px;margin:24px auto;padding:0 16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;margin:14px 0;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+    .row{display:flex;flex-wrap:wrap;gap:14px}
+    .row>.col{flex:1 1 320px}
+    .hero{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;margin:8px 0 14px}
+    .hero img{height:auto;max-height:70px;width:auto;object-fit:contain}
+    .hero-title{font-size:clamp(18px,3.8vw,26px);font-weight:800;line-height:1.25}
+    .hero-sub{font-size:clamp(14px,2.6vw,16px);color:var(--muted)}
+    .support{font-size:clamp(13px,2.4vw,15px);color:var(--muted)}
+    .title{font-size:clamp(20px,4vw,32px);font-weight:800;letter-spacing:.2px;margin:4px 0 4px}
+    .sub{color:var(--muted);margin-bottom:12px}
+    input[type=file]{padding:12px;border:1px dashed #27406d;border-radius:12px;width:100%;background:#0e1730;color:var(--ink)}
+    button{background:linear-gradient(135deg,var(--brand),#61dafb);border:0;color:var(--ink-dark);padding:10px 14px;border-radius:12px;font-weight:700;cursor:pointer}
+    button.ghost{background:#0f1b34;color:var(--ink);border:1px solid #243a63}
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;margin:2px 6px 2px 0;background:#243a63;color:#cfe1ff}
+    .score{font-weight:800}
+    .ok{color:var(--good)} .bad{color:var(--bad)} .warn{color:var(--warn)}
+    .table{width:100%;border-collapse:collapse;margin-top:8px}
+    .table th,.table td{border-bottom:1px solid #223357;padding:10px 8px;vertical-align:top}
+    .small{font-size:12px;color:var(--muted)}
+    .excerpt{white-space:pre-wrap;background:#0b1630;border:1px solid #213257;border-radius:10px;padding:10px;margin:6px 0;max-height:180px;overflow:auto}
+    .progress{height:10px;background:#0c1530;border-radius:999px;overflow:hidden}
+    .progress>span{display:block;height:100%;background:linear-gradient(90deg,var(--brand),var(--accent))}
+    .right{float:right}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .status{display:flex;align-items:center;gap:12px;margin:10px 0 6px 0}
+    .badge{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:14px;font-weight:800}
+    .badge.ok{background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.35)}
+    .badge.bad{background:rgba(239,68,68,.15);color:#fb7185;border:1px solid rgba(239,68,68,.35)}
+    .why li{margin:6px 0}
+    .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end}
+    @media (max-width:760px){
+      .grid{grid-template-columns:1fr}
+      .toolbar{justify-content:stretch}
+      .right{float:none;display:block;margin-top:6px}
+    }
+  </style>
+  <!-- PDF & DOCX processing -->
+  <script defer src="https://unpkg.com/pdfjs-dist@4.6.82/build/pdf.min.js"></script>
+  <script defer src="https://unpkg.com/pdfjs-dist@4.6.82/build/pdf.worker.min.js"></script>
+  <script defer src="https://unpkg.com/mammoth@1.7.0/mammoth.browser.min.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <!-- HEADER with APO logo + titles -->
+    <div class="card hero" style="padding:22px 16px">
+      <img src="https://www.apo-tokyo.org/wp-content/uploads/2021/12/apo-logo.png" alt="APO (Asian Productivity Organization) Logo" />
+      <div class="hero-title">Verify and Check GP Report based on APO Six Steps Thirteen Task Methodology</div>
+      <div class="hero-sub">developed by <b>Leonard Tiopan Panjaitan, MT, CSRA, CGPS, CPS</b> — ©2025</div>
+      <div class="support">This website is supported by <a href="https://greenproductivity.online" target="_blank" rel="noopener">greenproductivity.online</a></div>
+    </div>
+
+    <!-- Intro -->
+    <div class="title">Verifikasi Kesesuaian GP Report</div>
+    <div class="sub">Unggah laporan GP (PDF/DOCX/TXT). Sistem memverifikasi <b>APO — Six Steps & Thirteen Tasks</b> dan menetapkan status akhir <b>Sesuai</b> / <b>Tidak Sesuai</b>. Anda dapat <b>mengunduh hasil verifikasi (TXT)</b> yang memuat ringkasan, skor, gap, dan rekomendasi tindak lanjut; serta <b>Ekspor JSON</b> untuk audit.</div>
+
+    <!-- Controls -->
+    <div class="card row">
+      <div class="col">
+        <input id="file" type="file" accept=".pdf,.docx,.txt,.md" />
+        <div class="small" style="margin-top:6px">Pemrosesan 100% di browser (client-side). Format: PDF, DOCX, TXT/MD.</div>
+      </div>
+      <div class="col" style="align-content:center">
+        <div class="toolbar">
+          <button id="run">Jalankan Verifikasi</button>
+          <button id="reset" class="ghost">Reset</button>
+          <button id="exportTxt" class="ghost">Unduh TXT</button>
+          <button id="exportJson" class="ghost">Ekspor JSON</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Output sections -->
+    <div id="status" class="card" style="display:none"></div>
+    <div id="meta" class="card" style="display:none"></div>
+    <div id="scores" class="card" style="display:none"></div>
+    <div id="matrix" class="card" style="display:none"></div>
+    <div id="evidence" class="card" style="display:none"></div>
+
+    <div class="small">Catatan: Pemeriksaan ini bersifat heuristik sebagai <i>assurance aid</i>, bukan pengganti audit manual.</div>
+    <div class="small" style="margin-top:12px"><a href="index.html">← Kembali ke Beranda</a></div>
+  </div>
+
+<script>
+/* ===== Util ===== */
+const el = sel => document.querySelector(sel);
+const escapeHTML = s => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const toPct = n => (Math.round(n*1000)/10).toFixed(1)+'%';
+function findAll(text, regex){const out=[];let m;while((m=regex.exec(text))!==null) out.push({index:m.index,match:m[0]});return out;}
+function ctx(text, idx, span=140){const s=Math.max(0,idx-span),e=Math.min(text.length,idx+span);return text.slice(s,e);}
+function scoreBool(ok,w=1){return ok?1*w:0}
+
+/* ===== APO Tasks/Signals ===== */
+const TASKS = [
+  { step:1, code:'T1', name:'Team Formation', keys:[/tim gp|team gp|ketua|anggota|fasilitator|steering/i,/dukungan manajemen|komitmen manajemen|persetujuan/i] },
+  { step:1, code:'T2', name:'Walk-through survey & information collection', keys:[/survei|walk-?through|observasi|pengumpulan data|baseline/i] },
+  { step:1, code:'T3', name:'Identification of problems & causes', keys:[/identifikasi masalah|akar penyebab|fish ?bone|5 why|diagram iceberg/i] },
+  { step:2, code:'T4', name:'Setting objectives & targets', keys:[/tujuan|sasaran|target|kpi|indikator kinerja/i] },
+  { step:3, code:'T5', name:'Generating GP options', keys:[/opsi gp|alternatif solusi|pilihan perbaikan|ide perbaikan/i] },
+  { step:3, code:'T6', name:'Screening, evaluating, prioritizing options', keys:[/screening|prioritasi|evaluasi opsi|matr(i|e)ks pemilihan|kriteria/i] },
+  { step:4, code:'T7', name:'Formulating GP implementation plans', keys:[/rencana implementasi|implementation plan|5w\+1h|timeline|jadwal/i] },
+  { step:4, code:'T8', name:'Implementing selected options', keys:[/implementasi|pelaksanaan|pilot|roll[- ]?out|uji coba/i] },
+  { step:5, code:'T9', name:'Training, awareness & competence', keys:[/pelatihan|training|sosialisasi|kompeten|awareness/i] },
+  { step:5, code:'T10', name:'Monitoring & evaluating results', keys:[/monitor(ing)?|evaluasi|m\&e|kirk.?patrick|kpi tercapai/i] },
+  { step:5, code:'T11', name:'Management review', keys:[/tinjauan manajemen|management review|rapat tinjauan/i] },
+  { step:6, code:'T12', name:'Integrate into management systems', keys:[/standarisasi|standardisasi|sop|iso 14001|integrasi ke sistem manajemen/i] },
+  { step:6, code:'T13', name:'Identify new/additional problem areas', keys:[/continuous improvement|perbaikan berkelanjutan|temuan baru|masalah baru/i] },
+];
+
+const ENV_SIGNALS = [
+  {code:'ENV1', name:'Energi', keys:[/kwh|energi listrik|efisiensi energi|power|energi|kva|kvar/i]},
+  {code:'ENV2', name:'Air', keys:[/\bm3\b|meter kubik|air baku|water consumption|reuse|recycle/i]},
+  {code:'ENV3', name:'Limbah', keys:[/limbah|timbulan|b3\b|olah limbah|3r|reduce reuse recycle/i]},
+  {code:'ENV4', name:'Emisi/GRK', keys:[/co2|co₂|ghg|gas rumah kaca|emisi|carbon footprint/i]},
+  {code:'ENV5', name:'Material/Bahan Kimia', keys:[/bahan baku|material|kimia|substitusi bahan|berbahaya/i]},
+];
+
+const METHOD_SIGNALS = [
+  {code:'M1', name:'PDCA', keys:[/pdca|plan[- ]do[- ]check[- ]act/i]},
+  {code:'M2', name:'Baseline → After', keys:[/(sebelum|baseline).{0,40}(sesudah|after|post)|pre.{0,20}post/i]},
+  {code:'M3', name:'CBA/ROI', keys:[/roi|cba|benefit[- ]cost|bc ratio|payback/i]},
+  {code:'M4', name:'Kuantifikasi & Satuan', keys:[/\d+(\.\d+)?\s?(%|kwh|m3|ton|kg|rp|usd|ppm)/i]},
+  {code:'M5', name:'Dokumentasi/Bukti', keys:[/lampiran|annex|dokumentasi|evidence/i]}
+];
+
+/* ===== Readers ===== */
+async function readFileAsText(file){
+  const ext = file.name.toLowerCase().split('.').pop();
+  if(ext==='txt' || ext==='md'){ return await file.text(); }
+  if(ext==='docx'){
+    const buf = await file.arrayBuffer();
+    const res = await window.mammoth.extractRawText({arrayBuffer:buf});
+    return res.value || '';
+  }
+  if(ext==='pdf'){
+    const buf = await file.arrayBuffer();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@4.6.82/build/pdf.worker.min.js";
+    const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+    let full = '';
+    for(let p=1;p<=pdf.numPages;p++){
+      const page = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const str = content.items.map(it=>it.str).join(' ');
+      full += `\n\n[HALAMAN ${p}]\n` + str;
+    }
+    return full;
+  }
+  throw new Error('Format tidak didukung.');
+}
+
+/* ===== Engine ===== */
+function verify(text){
+  const evid = { tasks:{}, env:{}, methods:{}, gaps:[] };
+  const src = text.replace(/\s+/g,' ').trim();
+
+  // Tasks
+  TASKS.forEach(t=>{
+    const hits = t.keys.map(k=>findAll(src,k)).flat();
+    evid.tasks[t.code] = {step:t.step, name:t.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
+  });
+
+  // Env
+  ENV_SIGNALS.forEach(s=>{
+    const hits = s.keys.map(k=>findAll(src,k)).flat();
+    evid.env[s.code] = {name:s.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
+  });
+
+  // Methods
+  METHOD_SIGNALS.forEach(m=>{
+    const hits = m.keys.map(k=>findAll(src,k)).flat();
+    evid.methods[m.code] = {name:m.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
+  });
+
+  // Step coverage
+  const stepCoverage = [1,2,3,4,5,6].map(step=>{
+    const stepTasks = TASKS.filter(t=>t.step===step);
+    const covered = stepTasks.filter(t=>evid.tasks[t.code].hits>0).length;
+    return covered/stepTasks.length;
+  });
+
+  const envScore = Object.values(evid.env).reduce((a,b)=>a+(b.hits>0?1:0),0)/ENV_SIGNALS.length;
+  const methodBase = scoreBool(evid.methods.M1.hits>0,.2)
+                   + scoreBool(evid.methods.M2.hits>0,.3)
+                   + scoreBool(evid.methods.M3.hits>0,.2)
+                   + scoreBool(evid.methods.M4.hits>0,.2)
+                   + scoreBool(evid.methods.M5.hits>0,.1);
+  const tasksAvg = stepCoverage.reduce((a,b)=>a+b,0)/stepCoverage.length;
+  const composite = (tasksAvg*0.6) + (envScore*0.25) + (methodBase*0.15);
+
+  // PASS/FAIL thresholds (ketat)
+  const pass = composite>=0.68 && tasksAvg>=0.60 && envScore>=0.40 && methodBase>=0.40;
+
+  // Gaps utama (alasan)
+  if(envScore<0.40) evid.gaps.push('Indikator dampak lingkungan (energi/air/limbah/emisi/material) kurang lengkap.');
+  if(evid.methods.M2.hits===0) evid.gaps.push('Tidak ditemukan bukti baseline → after (pre/post) yang terukur.');
+  if(evid.methods.M1.hits===0) evid.gaps.push('Tidak ada penyebutan/indikasi penerapan PDCA.');
+  if(evid.methods.M3.hits===0) evid.gaps.push('Tidak ada analisis ekonomi (ROI/CBA/BC Ratio/Payback).');
+  if(evid.methods.M4.hits===0) evid.gaps.push('Minim kuantifikasi dengan satuan (%/kWh/m3/ton/Rp).');
+  if(stepCoverage[1] < .5) evid.gaps.push('Langkah 2 (Planning & Information Collection) belum memadai.');
+  if(stepCoverage[4] < .5) evid.gaps.push('Langkah 5 (Monitoring & Review) belum memadai.');
+  if(stepCoverage[5] < .5) evid.gaps.push('Langkah 6 (Sustaining/Standarisasi) belum memadai.');
+
+  return {evid, stepCoverage, envScore, methodBase, tasksAvg, composite, pass, raw:text};
+}
+
+/* ===== Rekomendasi Otomatis ===== */
+function generateRecommendations(v){
+  const R = [];
+  if(!v.pass){ R.push('Prioritaskan pemenuhan syarat minimum (lingkungan & metodologi) hingga ambang lulus terpenuhi.'); }
+  if(v.envScore < 0.40){
+    R.push('- Perluas cakupan dampak lingkungan: tambahkan baseline & target pada energi, air, limbah (padat/cair), emisi/GRK, serta material/bahan kimia.');
+  }
+  if(v.evid.methods.M2.hits===0){
+    R.push('- Lengkapi data pre/post (baseline → after) untuk setiap indikator kunci; gunakan tabel sebelum-sesudah dan grafik tren.');
+  }
+  if(v.evid.methods.M1.hits===0){
+    R.push('- Terapkan dan dokumentasikan PDCA pada tiap opsi GP (Plan-Do-Check-Act) termasuk bukti di setiap tahap.');
+  }
+  if(v.evid.methods.M3.hits===0){
+    R.push('- Tambahkan analisis ekonomi (ROI, Benefit-Cost Ratio, Payback) untuk opsi yang diimplementasikan.');
+  }
+  if(v.evid.methods.M4.hits===0){
+    R.push('- Gunakan kuantifikasi bersatuan (kWh, m3, ton, kg, Rp, %). Konversi energi ke CO₂eq untuk menilai emisi.');
+  }
+  if(v.stepCoverage[1] < .5){
+    R.push('- Perkuat Langkah 2: pengumpulan informasi/baseline proses & lingkungan (material/energi balance, peta proses).');
+  }
+  if(v.stepCoverage[4] < .5){
+    R.push('- Perkuat Langkah 5: monitoring & evaluasi berjadwal (indikator, metode, frekuensi, PIC, formulir).');
+  }
+  if(v.stepCoverage[5] < .5){
+    R.push('- Perkuat Langkah 6: standarisasi dalam SOP/ISO 14001 dan rencana replikasi (roll-out) lintas unit.');
+  }
+  if(R.length===0){
+    R.push('Dokumentasi sudah kuat. Lanjutkan replikasi lintas unit dan integrasikan ke sistem manajemen (SOP/ISO 14001).');
+  }
+  return R.join('\n');
+}
+
+/* ===== UI ===== */
+function bar(n){return `<div class="progress"><span style="width:${(n*100).toFixed(1)}%"></span></div>`;}
+
+function renderStatus(v, file){
+  const cls = v.pass ? 'ok' : 'bad';
+  const label = v.pass ? 'Sesuai' : 'Tidak Sesuai';
+  const reasons = v.pass ? '' : `<ul class="why">${v.evid.gaps.map(x=>`<li>${escapeHTML(x)}</li>`).join('')}</ul>`;
+  el('#status').style.display='block';
+  el('#status').innerHTML = `
+    <div class="status">
+      <div class="badge ${cls}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          ${v.pass
+            ? '<path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+            : '<path d="M6 6l12 12M18 6l-12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'}
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"></circle>
+        </svg>
+        Status Akhir: ${label}
+      </div>
+      <div class="small">Berkas: <b>${escapeHTML(file.name)}</b></div>
+    </div>
+    ${reasons}
+  `;
+}
+
+function renderMeta(file, text){
+  const words = text.trim().split(/\s+/).length;
+  el('#meta').style.display='block';
+  el('#meta').innerHTML = `
+    <div class="row">
+      <div class="col">
+        <div><b>Nama berkas:</b> ${escapeHTML(file.name)}</div>
+        <div><b>Ukuran:</b> ${(file.size/1024).toFixed(1)} KB</div>
+        <div><b>Perkiraan jumlah kata:</b> ${words.toLocaleString('id-ID')}</div>
+      </div>
+      <div class="col">
+        <span class="pill">APO Six Steps</span>
+        <span class="pill">13 Tasks</span>
+        <span class="pill">Env & ROI</span>
+        <span class="pill">Client-side</span>
+      </div>
+    </div>`;
+}
+
+function renderScores(v){
+  el('#scores').style.display='block';
+  el('#scores').innerHTML = `
+    <div class="grid">
+      <div class="card" style="background:#0d1831;border-color:#223357">
+        <div><b>Skor Tugas APO (rata-rata 6 langkah)</b> <span class="right score">${toPct(v.tasksAvg)}</span></div>
+        ${bar(v.tasksAvg)}
+      </div>
+      <div class="card" style="background:#0d1831;border-color:#223357">
+        <div><b>Skor Lingkungan</b> <span class="right score">${toPct(v.envScore)}</span></div>
+        ${bar(v.envScore)}
+        <div class="small">Energi • Air • Limbah • Emisi • Material</div>
+      </div>
+      <div class="card" style="background:#0d1831;border-color:#223357">
+        <div><b>Skor Metodologi</b> <span class="right score">${toPct(v.methodBase)}</span></div>
+        ${bar(v.methodBase)}
+        <div class="small">PDCA • Baseline→After • ROI/CBA • Kuantifikasi • Bukti</div>
+      </div>
+      <div class="card" style="background:#0d1831;border-color:#223357">
+        <div><b>Skor Komposit APO GP</b> <span class="right score">${toPct(v.composite)}</span></div>
+        ${bar(v.composite)}
+        <div class="small">Bobot: Tasks 60% • Lingkungan 25% • Metode 15%</div>
+      </div>
+    </div>
+  `;
+
+  // Matrix per langkah
+  const stepRows = [1,2,3,4,5,6].map(step=>{
+    const tasks = TASKS.filter(t=>t.step===step);
+    const covered = tasks.filter(t=>v.evid.tasks[t.code].hits>0);
+    const val = v.stepCoverage[step-1];
+    const cls = val>=.67?'ok':val>=.34?'warn':'bad';
+    return `
+      <tr>
+        <td><b>Langkah ${step}</b></td>
+        <td>${covered.length}/${tasks.length} task</td>
+        <td class="${cls}">${toPct(val)}</td>
+        <td>${covered.map(t=>`<span class="pill">${t.code} ${escapeHTML(t.name)}</span>`).join(' ') || '<span class="small">—</span>'}</td>
+      </tr>`;
+  }).join('');
+
+  el('#matrix').style.display='block';
+  el('#matrix').innerHTML = `
+    <h3 style="margin-top:0">Matriks Cakupan Tugas per Langkah</h3>
+    <table class="table">
+      <thead><tr><th>Langkah</th><th>Task Terpenuhi</th><th>Cakupan</th><th>Task Terdeteksi</th></tr></thead>
+      <tbody>${stepRows}</tbody>
+    </table>
+
+    <h3>Sinyal Lingkungan & Metodologis</h3>
+    <div class="grid">
+      <div>
+        <table class="table">
+          <thead><tr><th>Lingkungan</th><th>Deteksi</th></tr></thead>
+          <tbody>
+            ${Object.entries(v.evid.env).map(([k,o])=>{
+              const cls=o.hits>0?'ok':'bad';
+              return `<tr><td>${k} — ${escapeHTML(o.name)}</td><td class="${cls}">${o.hits>0?'ADA':'TIDAK ADA'}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <table class="table">
+          <thead><tr><th>Metodologi</th><th>Deteksi</th></tr></thead>
+          <tbody>
+            ${Object.entries(v.evid.methods).map(([k,o])=>{
+              const cls=o.hits>0?'ok':'bad';
+              return `<tr><td>${k} — ${escapeHTML(o.name)}</td><td class="${cls}">${o.hits>0?'ADA':'TIDAK ADA'}</td></tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Evidence cuplikan
+  const evBlocks = [];
+  TASKS.forEach(t=>{
+    const o=v.evid.tasks[t.code]; if(o.hits>0){
+      evBlocks.push(`<div><b>${t.code} • ${escapeHTML(t.name)}</b> <span class="small">(${o.hits} kecocokan)</span>${o.samples.map(s=>`<div class="excerpt">${escapeHTML(s)}</div>`).join('')}</div>`);
+    }
+  });
+  ENV_SIGNALS.forEach(s=>{
+    const o=v.evid.env[s.code]; if(o.hits>0){
+      evBlocks.push(`<div><b>${s.code} • ${escapeHTML(s.name)}</b> <span class="small">(${o.hits} kecocokan)</span>${o.samples.map(sx=>`<div class="excerpt">${escapeHTML(sx)}</div>`).join('')}</div>`);
+    }
+  });
+  METHOD_SIGNALS.forEach(m=>{
+    const o=v.evid.methods[m.code]; if(o.hits>0){
+      evBlocks.push(`<div><b>${m.code} • ${escapeHTML(o.name)}</b> <span class="small">(${o.hits} kecocokan)</span>${o.samples.map(sx=>`<div class="excerpt">${escapeHTML(sx)}</div>`).join('')}</div>`);
+    }
+  });
+  el('#evidence').style.display='block';
+  el('#evidence').innerHTML = `<h3 style="margin-top:0">Cuplikan Bukti Otomatis</h3>${evBlocks.join('') || '<div class="small">Tidak ada bukti yang dapat ditampilkan.</div>'}`;
+}
+
+/* ===== Wiring ===== */
+let lastResult=null,lastText='',lastFile=null;
+
+el('#reset').addEventListener('click', ()=>{
+  ['#status','#meta','#scores','#matrix','#evidence'].forEach(s=>{el(s).style.display='none'; el(s).innerHTML='';});
+  el('#file').value=''; lastResult=null; lastText=''; lastFile=null;
+});
+
+el('#run').addEventListener('click', async ()=>{
+  const file = el('#file').files[0];
+  if(!file){ alert('Pilih berkas terlebih dahulu.'); return; }
+  try{
+    el('#run').disabled=true; el('#run').innerText='Memproses...';
+    const text = await readFileAsText(file);
+    const v = verify(text);
+    lastResult=v; lastText=text; lastFile=file;
+    renderStatus(v,file);
+    renderMeta(file,text);
+    renderScores(v);
+  }catch(e){
+    console.error(e); alert('Gagal memproses berkas: '+e.message);
+  }finally{
+    el('#run').disabled=false; el('#run').innerText='Jalankan Verifikasi';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+});
+
+/* ===== Exporters ===== */
+el('#exportJson').addEventListener('click', ()=>{
+  if(!lastResult){ alert('Belum ada hasil untuk diekspor.'); return; }
+  const data = {
+    fileName:lastFile?.name||null,
+    computedAt:new Date().toISOString(),
+    status:lastResult.pass?'Sesuai':'Tidak Sesuai',
+    scores:{
+      tasksAvg:lastResult.tasksAvg,
+      envScore:lastResult.envScore,
+      methodScore:lastResult.methodBase,
+      composite:lastResult.composite,
+      stepCoverage:lastResult.stepCoverage
+    },
+    gaps:lastResult.evid.gaps,
+    evidence:lastResult.evid
+  };
+  const blob = new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=(lastFile?.name||'report')+'.apo-verification.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+
+el('#exportTxt').addEventListener('click', ()=>{
+  if(!lastResult){ alert('Belum ada hasil untuk diunduh. Jalankan verifikasi terlebih dahulu.'); return; }
+  const v = lastResult;
+  const fileName = (lastFile?.name||'report').replace(/\.[^.]+$/,'');
+  const recom = generateRecommendations(v);
+
+  const lines = [];
+  lines.push('=== HASIL VERIFIKASI GP REPORT (APO Six Steps & Thirteen Tasks) ===');
+  lines.push('Tanggal/Waktu   : ' + new Date().toLocaleString('id-ID'));
+  lines.push('Nama Berkas     : ' + (lastFile?.name||'-'));
+  lines.push('Status Akhir    : ' + (v.pass?'SESUAI':'TIDAK SESUAI'));
+  lines.push('');
+  lines.push('--- SKOR ---');
+  lines.push('Skor Tugas APO  : ' + toPct(v.tasksAvg));
+  lines.push('Skor Lingkungan : ' + toPct(v.envScore));
+  lines.push('Skor Metodologi : ' + toPct(v.methodBase));
+  lines.push('Skor Komposit   : ' + toPct(v.composite));
+  lines.push('');
+  lines.push('--- GAP/ALASAN (jika ada) ---');
+  if(v.evid.gaps.length){ v.evid.gaps.forEach((g,i)=>lines.push((i+1)+'. '+g)); } else { lines.push('(Tidak ada)'); }
+  lines.push('');
+  lines.push('--- REKOMENDASI TINDAK LANJUT ---');
+  lines.push(recom || '(Tidak ada)');
+  lines.push('');
+  lines.push('--- CATATAN ---');
+  lines.push('Pemeriksaan ini bersifat heuristik/indikatif dan tidak menggantikan audit manual.');
+  lines.push('');
+  lines.push('=== RINGKASAN EVIDENCE (indikator yang terdeteksi) ===');
+  lines.push('[Lingkungan]');
+  Object.entries(v.evid.env).forEach(([k,o])=>{
+    lines.push(`- ${k} ${o.name}: ${o.hits>0?'ADA':'TIDAK ADA'}`);
+  });
+  lines.push('[Metodologi]');
+  Object.entries(v.evid.methods).forEach(([k,o])=>{
+    lines.push(`- ${k} ${o.name}: ${o.hits>0?'ADA':'TIDAK ADA'}`);
+  });
+  lines.push('[Cakupan Langkah]');
+  v.stepCoverage.forEach((val,idx)=>{ lines.push(`- Langkah ${idx+1}: ${toPct(val)}`); });
+
+  const txt = lines.join('\n');
+  const blob = new Blob([txt],{type:'text/plain;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download= fileName + '.apo-verification.txt';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>
