@@ -51,14 +51,16 @@
       .right{float:none;display:block;margin-top:6px}
     }
   </style>
-  <!-- PDF & DOCX processing -->
-  <script defer src="https://unpkg.com/pdfjs-dist@4.6.82/build/pdf.min.js"></script>
-  <script defer src="https://unpkg.com/pdfjs-dist@4.6.82/build/pdf.worker.min.js"></script>
+
+  <!-- ✅ PDF.js legacy UMD build that defines window.pdfjsLib -->
+  <script defer src="https://unpkg.com/pdfjs-dist@3.10.111/legacy/build/pdf.min.js"></script>
+  <script defer src="https://unpkg.com/pdfjs-dist@3.10.111/legacy/build/pdf.worker.min.js"></script>
+  <!-- DOCX -->
   <script defer src="https://unpkg.com/mammoth@1.7.0/mammoth.browser.min.js"></script>
 </head>
 <body>
   <div class="wrap">
-    <!-- HEADER with APO logo + titles -->
+    <!-- HEADER -->
     <div class="card hero" style="padding:22px 16px">
       <img src="https://www.apo-tokyo.org/wp-content/uploads/2021/12/apo-logo.png" alt="APO (Asian Productivity Organization) Logo" />
       <div class="hero-title">Verify and Check GP Report based on APO Six Steps Thirteen Task Methodology</div>
@@ -66,11 +68,9 @@
       <div class="support">This website is supported by <a href="https://greenproductivity.online" target="_blank" rel="noopener">greenproductivity.online</a></div>
     </div>
 
-    <!-- Intro -->
     <div class="title">Verifikasi Kesesuaian GP Report</div>
-    <div class="sub">Unggah laporan GP (PDF/DOCX/TXT). Sistem memverifikasi <b>APO — Six Steps & Thirteen Tasks</b> dan menetapkan status akhir <b>Sesuai</b> / <b>Tidak Sesuai</b>. Anda dapat <b>mengunduh hasil verifikasi (TXT)</b> yang memuat ringkasan, skor, gap, dan rekomendasi tindak lanjut; serta <b>Ekspor JSON</b> untuk audit.</div>
+    <div class="sub">Unggah laporan GP (PDF/DOCX/TXT). Sistem memverifikasi <b>APO — Six Steps & Thirteen Tasks</b> dan menetapkan status akhir <b>Sesuai</b> / <b>Tidak Sesuai</b>. Anda dapat <b>mengunduh hasil verifikasi (TXT)</b> yang memuat ringkasan, skor, gap, dan rekomendasi; serta <b>Ekspor JSON</b> untuk audit.</div>
 
-    <!-- Controls -->
     <div class="card row">
       <div class="col">
         <input id="file" type="file" accept=".pdf,.docx,.txt,.md" />
@@ -86,7 +86,6 @@
       </div>
     </div>
 
-    <!-- Output sections -->
     <div id="status" class="card" style="display:none"></div>
     <div id="meta" class="card" style="display:none"></div>
     <div id="scores" class="card" style="display:none"></div>
@@ -149,8 +148,10 @@ async function readFileAsText(file){
     return res.value || '';
   }
   if(ext==='pdf'){
+    // ✅ workerSrc must match legacy build
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://unpkg.com/pdfjs-dist@3.10.111/legacy/build/pdf.worker.min.js";
     const buf = await file.arrayBuffer();
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@4.6.82/build/pdf.worker.min.js";
     const pdf = await pdfjsLib.getDocument({data:buf}).promise;
     let full = '';
     for(let p=1;p<=pdf.numPages;p++){
@@ -169,25 +170,21 @@ function verify(text){
   const evid = { tasks:{}, env:{}, methods:{}, gaps:[] };
   const src = text.replace(/\s+/g,' ').trim();
 
-  // Tasks
   TASKS.forEach(t=>{
     const hits = t.keys.map(k=>findAll(src,k)).flat();
     evid.tasks[t.code] = {step:t.step, name:t.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
   });
 
-  // Env
   ENV_SIGNALS.forEach(s=>{
     const hits = s.keys.map(k=>findAll(src,k)).flat();
     evid.env[s.code] = {name:s.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
   });
 
-  // Methods
   METHOD_SIGNALS.forEach(m=>{
     const hits = m.keys.map(k=>findAll(src,k)).flat();
     evid.methods[m.code] = {name:m.name, hits:hits.length, samples:hits.slice(0,3).map(h=>ctx(src,h.index))};
   });
 
-  // Step coverage
   const stepCoverage = [1,2,3,4,5,6].map(step=>{
     const stepTasks = TASKS.filter(t=>t.step===step);
     const covered = stepTasks.filter(t=>evid.tasks[t.code].hits>0).length;
@@ -195,18 +192,16 @@ function verify(text){
   });
 
   const envScore = Object.values(evid.env).reduce((a,b)=>a+(b.hits>0?1:0),0)/ENV_SIGNALS.length;
-  const methodBase = scoreBool(evid.methods.M1.hits>0,.2)
-                   + scoreBool(evid.methods.M2.hits>0,.3)
-                   + scoreBool(evid.methods.M3.hits>0,.2)
-                   + scoreBool(evid.methods.M4.hits>0,.2)
-                   + scoreBool(evid.methods.M5.hits>0,.1);
+  const methodBase = ( (evid.methods.M1.hits>0?0.2:0)
+                     + (evid.methods.M2.hits>0?0.3:0)
+                     + (evid.methods.M3.hits>0?0.2:0)
+                     + (evid.methods.M4.hits>0?0.2:0)
+                     + (evid.methods.M5.hits>0?0.1:0) );
   const tasksAvg = stepCoverage.reduce((a,b)=>a+b,0)/stepCoverage.length;
   const composite = (tasksAvg*0.6) + (envScore*0.25) + (methodBase*0.15);
 
-  // PASS/FAIL thresholds (ketat)
   const pass = composite>=0.68 && tasksAvg>=0.60 && envScore>=0.40 && methodBase>=0.40;
 
-  // Gaps utama (alasan)
   if(envScore<0.40) evid.gaps.push('Indikator dampak lingkungan (energi/air/limbah/emisi/material) kurang lengkap.');
   if(evid.methods.M2.hits===0) evid.gaps.push('Tidak ditemukan bukti baseline → after (pre/post) yang terukur.');
   if(evid.methods.M1.hits===0) evid.gaps.push('Tidak ada penyebutan/indikasi penerapan PDCA.');
@@ -219,37 +214,21 @@ function verify(text){
   return {evid, stepCoverage, envScore, methodBase, tasksAvg, composite, pass, raw:text};
 }
 
-/* ===== Rekomendasi Otomatis ===== */
+/* ===== Recommendations ===== */
 function generateRecommendations(v){
   const R = [];
   if(!v.pass){ R.push('Prioritaskan pemenuhan syarat minimum (lingkungan & metodologi) hingga ambang lulus terpenuhi.'); }
   if(v.envScore < 0.40){
-    R.push('- Perluas cakupan dampak lingkungan: tambahkan baseline & target pada energi, air, limbah (padat/cair), emisi/GRK, serta material/bahan kimia.');
+    R.push('- Perluas cakupan dampak lingkungan: tambahkan baseline & target pada energi, air, limbah, emisi/GRK, serta material/bahan kimia.');
   }
-  if(v.evid.methods.M2.hits===0){
-    R.push('- Lengkapi data pre/post (baseline → after) untuk setiap indikator kunci; gunakan tabel sebelum-sesudah dan grafik tren.');
-  }
-  if(v.evid.methods.M1.hits===0){
-    R.push('- Terapkan dan dokumentasikan PDCA pada tiap opsi GP (Plan-Do-Check-Act) termasuk bukti di setiap tahap.');
-  }
-  if(v.evid.methods.M3.hits===0){
-    R.push('- Tambahkan analisis ekonomi (ROI, Benefit-Cost Ratio, Payback) untuk opsi yang diimplementasikan.');
-  }
-  if(v.evid.methods.M4.hits===0){
-    R.push('- Gunakan kuantifikasi bersatuan (kWh, m3, ton, kg, Rp, %). Konversi energi ke CO₂eq untuk menilai emisi.');
-  }
-  if(v.stepCoverage[1] < .5){
-    R.push('- Perkuat Langkah 2: pengumpulan informasi/baseline proses & lingkungan (material/energi balance, peta proses).');
-  }
-  if(v.stepCoverage[4] < .5){
-    R.push('- Perkuat Langkah 5: monitoring & evaluasi berjadwal (indikator, metode, frekuensi, PIC, formulir).');
-  }
-  if(v.stepCoverage[5] < .5){
-    R.push('- Perkuat Langkah 6: standarisasi dalam SOP/ISO 14001 dan rencana replikasi (roll-out) lintas unit.');
-  }
-  if(R.length===0){
-    R.push('Dokumentasi sudah kuat. Lanjutkan replikasi lintas unit dan integrasikan ke sistem manajemen (SOP/ISO 14001).');
-  }
+  if(v.evid.methods.M2.hits===0){ R.push('- Lengkapi data pre/post (baseline → after) untuk setiap indikator kunci; gunakan tabel sebelum-sesudah dan grafik tren.'); }
+  if(v.evid.methods.M1.hits===0){ R.push('- Terapkan & dokumentasikan PDCA pada tiap opsi GP (Plan-Do-Check-Act) beserta buktinya.'); }
+  if(v.evid.methods.M3.hits===0){ R.push('- Tambahkan analisis ekonomi (ROI/BC Ratio/Payback) untuk opsi yang diimplementasikan.'); }
+  if(v.evid.methods.M4.hits===0){ R.push('- Gunakan kuantifikasi bersatuan (kWh, m3, ton, kg, Rp, %) dan konversi energi ke CO₂eq.'); }
+  if(v.stepCoverage[1] < .5){ R.push('- Perkuat Langkah 2: baseline proses & lingkungan (material/energy balance, peta proses).'); }
+  if(v.stepCoverage[4] < .5){ R.push('- Perkuat Langkah 5: monitoring & evaluasi berjadwal (indikator, metode, frekuensi, PIC).'); }
+  if(v.stepCoverage[5] < .5){ R.push('- Perkuat Langkah 6: standarisasi (SOP/ISO 14001) & rencana replikasi lintas unit.'); }
+  if(R.length===0){ R.push('Dokumentasi sudah kuat. Lanjutkan replikasi lintas unit dan integrasi ke SOP/ISO 14001.'); }
   return R.join('\n');
 }
 
@@ -323,7 +302,6 @@ function renderScores(v){
     </div>
   `;
 
-  // Matrix per langkah
   const stepRows = [1,2,3,4,5,6].map(step=>{
     const tasks = TASKS.filter(t=>t.step===step);
     const covered = tasks.filter(t=>v.evid.tasks[t.code].hits>0);
@@ -373,7 +351,6 @@ function renderScores(v){
     </div>
   `;
 
-  // Evidence cuplikan
   const evBlocks = [];
   TASKS.forEach(t=>{
     const o=v.evid.tasks[t.code]; if(o.hits>0){
@@ -406,6 +383,10 @@ el('#run').addEventListener('click', async ()=>{
   const file = el('#file').files[0];
   if(!file){ alert('Pilih berkas terlebih dahulu.'); return; }
   try{
+    // Guard: if lib not loaded
+    if (typeof window.pdfjsLib === 'undefined') {
+      throw new Error('pdfjsLib is not available. Coba refresh (Ctrl+F5).');
+    }
     el('#run').disabled=true; el('#run').innerText='Memproses...';
     const text = await readFileAsText(file);
     const v = verify(text);
@@ -414,7 +395,7 @@ el('#run').addEventListener('click', async ()=>{
     renderMeta(file,text);
     renderScores(v);
   }catch(e){
-    console.error(e); alert('Gagal memproses berkas: '+e.message);
+    console.error(e); alert('Gagal memproses berkas: ' + e.message);
   }finally{
     el('#run').disabled=false; el('#run').innerText='Jalankan Verifikasi';
     window.scrollTo({top:0,behavior:'smooth'});
