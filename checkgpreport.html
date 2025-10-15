@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Verifikasi Kesesuaian GP Report — APO Six Steps & Thirteen Tasks</title>
-  <meta name="description" content="Unggah GP report dan verifikasi APO Six Steps & Thirteen Tasks dengan status 'Sesuai' / 'Tidak Sesuai'. Non-blocking, progress, cancel, TXT rekomendasi." />
+  <meta name="description" content="Unggah GP report dan verifikasi APO Six Steps & Thirteen Tasks dengan status 'Sesuai' atau 'Tidak Sesuai'. Non-blocking, progress, cancel, TXT rekomendasi." />
   <link rel="preconnect" href="https://unpkg.com">
   <style>
     :root{
@@ -58,6 +58,7 @@
 </head>
 <body>
   <div class="wrap">
+    <!-- Header dengan logo APO -->
     <div class="card hero" style="padding:22px 16px">
       <img src="https://www.apo-tokyo.org/wp-content/uploads/2021/12/apo-logo.png" alt="APO Logo" />
       <div class="hero-title">Verify and Check GP Report based on APO Six Steps Thirteen Task Methodology</div>
@@ -68,6 +69,7 @@
     <div class="title">Verifikasi Kesesuaian GP Report</div>
     <div class="sub">Default: <b>Mode Cepat (sampling 10%, maks 30 halaman)</b> untuk mencegah hang. Nonaktifkan jika ingin verifikasi penuh (lebih lambat).</div>
 
+    <!-- Panel kontrol -->
     <div class="card">
       <div class="row">
         <div class="col">
@@ -90,9 +92,10 @@
           <label><input type="checkbox" id="fastMode" checked /> Mode Cepat (sampling)</label>
         </div>
       </div>
-      <div class="small" style="margin-top:8px">Jika masih lambat, konversi laporan ke <b>DOCX</b> atau <b>TXT</b> dulu lalu unggah kembali.</div>
+      <div class="small" style="margin-top:8px">Jika masih lambat, konversi laporan ke <b>DOCX</b> atau <b>TXT</b> terlebih dahulu.</div>
     </div>
 
+    <!-- Hasil -->
     <div id="status" class="card" style="display:none"></div>
     <div id="meta" class="card" style="display:none"></div>
     <div id="scores" class="card" style="display:none"></div>
@@ -103,7 +106,7 @@
   </div>
 
 <script>
-/* ===== Utils & UI ===== */
+/* ===================== Utils & UI ===================== */
 const el = s => document.querySelector(s);
 const escapeHTML = s => s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const toPct = n => (Math.round(n*1000)/10).toFixed(1)+'%';
@@ -111,19 +114,27 @@ const nextFrame = () => new Promise(r=>requestAnimationFrame(()=>r()));
 function showProgress(show){el('#progBox').style.display = show ? 'block' : 'none'}
 function setProgress(pct, label){el('#progBar').style.width = pct+'%'; el('#progText').textContent = label || ''}
 
-/* ===== Konfigurasi ===== */
+/* ===================== Konfigurasi ===================== */
 const MAX_FILE_MB = 30;            // batasi beban
 const PDF_SAMPLE_RATIO = 0.10;     // 10% halaman
 const PDF_SAMPLE_CAP   = 30;       // maksimal 30 halaman saat sampling
+const MAX_CHARS = 2_000_000;       // batasi input ke worker (2 juta karakter)
 
-/* ===== Web Worker untuk VERIFIKASI (non-blocking) ===== */
+/* ===================== Web Worker ===================== */
+/* Worker memverifikasi teks (regex) secara non-blocking. Menggunakan matchAll dengan flag 'g' agar tidak infinite loop. */
 const workerCode = `
 self.onmessage = (ev)=>{
   const {cmd, payload} = ev.data||{};
   if(cmd!=='verify') return;
   const {text} = payload;
 
-  function findAll(text, regex){const out=[];let m;while((m=regex.exec(text))!==null) out.push({i:m.index});return out;}
+  function countHits(str, rx){
+    const rg = new RegExp(rx.source, rx.flags.includes('g') ? rx.flags : (rx.flags + 'g'));
+    let n = 0;
+    for (const _ of str.matchAll(rg)) { n++; }
+    return n;
+  }
+
   const TASKS = [
     { s:1, c:'T1', n:'Team Formation', k:[/tim gp|team gp|ketua|anggota|fasilitator|steering/i,/dukungan manajemen|komitmen manajemen|persetujuan/i] },
     { s:1, c:'T2', n:'Walk-through survey & information collection', k:[/survei|walk-?through|observasi|pengumpulan data|baseline/i] },
@@ -158,16 +169,16 @@ self.onmessage = (ev)=>{
   const evid = {tasks:{}, env:{}, methods:{}, gaps:[]};
 
   TASKS.forEach(t=>{
-    const hits = t.k.map(r=>findAll(src,r)).flat();
-    evid.tasks[t.c] = {step:t.s, name:t.n, hits:hits.length};
+    const hits = t.k.reduce((acc,rx)=>acc + countHits(src, rx), 0);
+    evid.tasks[t.c] = {step:t.s, name:t.n, hits};
   });
   ENV.forEach(s=>{
-    const hits = s.k.map(r=>findAll(src,r)).flat();
-    evid.env[s.c] = {name:s.n, hits:hits.length};
+    const hits = s.k.reduce((acc,rx)=>acc + countHits(src, rx), 0);
+    evid.env[s.c] = {name:s.n, hits};
   });
   M.forEach(m=>{
-    const hits = m.k.map(r=>findAll(src,r)).flat();
-    evid.methods[m.c] = {name:m.n, hits:hits.length, w:m.w};
+    const hits = m.k.reduce((acc,rx)=>acc + countHits(src, rx), 0);
+    evid.methods[m.c] = {name:m.n, hits, w:m.w};
   });
 
   const stepCoverage=[1,2,3,4,5,6].map(st=>{
@@ -191,31 +202,41 @@ self.onmessage = (ev)=>{
   if(stepCoverage[5] < .5) evid.gaps.push('Langkah 6 (Sustaining/Standarisasi) belum memadai.');
 
   self.postMessage({ok:true, result:{evid, stepCoverage, envScore, methodBase, tasksAvg, composite, pass}});
-};`;
+};
+`;
 const worker = new Worker(URL.createObjectURL(new Blob([workerCode],{type:'application/javascript'})));
 
-/* ===== Ekstraksi file (dengan sampling & yield) ===== */
+/* ===================== Ekstraksi File ===================== */
 async function readFileAsText(file, {fastMode=true, onProgress=()=>{}}){
   const ext = file.name.toLowerCase().split('.').pop();
+
+  // TXT/MD
   if(ext==='txt' || ext==='md'){
-    onProgress(100,'Selesai (TXT/MD)'); return await file.text();
+    onProgress(100,'Selesai (TXT/MD).');
+    return await file.text();
   }
+
+  // DOCX
   if(ext==='docx'){
     onProgress(5,'Membuka DOCX…');
     const buf = await file.arrayBuffer();
     const res = await window.mammoth.extractRawText({arrayBuffer:buf});
-    onProgress(100,'Selesai (DOCX)'); return res.value||'';
+    onProgress(100,'Selesai (DOCX).');
+    return res.value || '';
   }
+
+  // PDF
   if(ext==='pdf'){
     const mb=file.size/1024/1024;
     if(mb>MAX_FILE_MB) throw new Error(`PDF ${mb.toFixed(1)} MB > batas ${MAX_FILE_MB} MB. Kompres atau unggah versi DOCX/TXT.`);
     pdfjsLib.GlobalWorkerOptions.workerSrc="https://unpkg.com/pdfjs-dist@3.10.111/legacy/build/pdf.worker.min.js";
+
     onProgress(5,'Memuat PDF…');
     const buf=await file.arrayBuffer();
-    const pdf=await pdfjsLib.getDocument({data:buf,isEvalSupported:false,stopAtErrors:true}).promise;
+    const pdf=await pdfjsLib.getDocument({data:buf,isEvalSupported:false, stopAtErrors:true}).promise;
     const total=pdf.numPages;
 
-    // pilih halaman
+    // Pilih halaman (sampling)
     let pages=[];
     if(fastMode && total>10){
       const sampleCount=Math.min(PDF_SAMPLE_CAP, Math.max(8, Math.ceil(total*PDF_SAMPLE_RATIO)));
@@ -235,15 +256,16 @@ async function readFileAsText(file, {fastMode=true, onProgress=()=>{}}){
       done++;
       const pct=Math.round((done/pages.length)*100);
       onProgress(pct,`Ekstraksi ${done}/${pages.length} ${fastMode?'(sampling)':''}…`);
-      await nextFrame(); // beri UI bernafas
+      await nextFrame(); // beri kesempatan UI merender
     }
     onProgress(100,'Ekstraksi PDF selesai.');
     return full;
   }
-  throw new Error('Format tidak didukung.');
+
+  throw new Error('Format tidak didukung. Gunakan PDF, DOCX, TXT, atau MD.');
 }
 
-/* ===== Render helpers (ringkas) ===== */
+/* ===================== Renderers ===================== */
 function bar(n){return `<div class="progress"><span style="width:${(n*100).toFixed(1)}%"></span></div>`;}
 function renderStatus(v,file){
   const cls=v.pass?'ok':'bad', label=v.pass?'Sesuai':'Tidak Sesuai';
@@ -284,6 +306,8 @@ function renderScores(v){
     <div class="card" style="background:#0d1831;border-color:#223357"><div><b>Skor Komposit</b><span style="float:right">${toPct(v.composite)}</span></div>${bar(v.composite)}<div class="small">Bobot: Tasks 60% • Lingkungan 25% • Metode 15%</div></div>
   </div>`;
 }
+
+/* Ringkasan evidence singkat (agar ringan) */
 function renderEvidence(v){
   const rowsEnv = Object.entries(v.evid.env).map(([k,o])=>`- ${k} ${o.name}: ${o.hits>0?'ADA':'TIDAK ADA'}`).join('<br>');
   const rowsMet = Object.entries(v.evid.methods).map(([k,o])=>`- ${k} ${o.name}: ${o.hits>0?'ADA':'TIDAK ADA'}`).join('<br>');
@@ -293,7 +317,7 @@ function renderEvidence(v){
   <div class="small" style="margin-top:8px"><b>Metodologi</b><br>${rowsMet}</div>`;
 }
 
-/* ===== Rekomendasi ===== */
+/* ===================== Rekomendasi ===================== */
 function generateRecommendations(v){
   const R=[];
   if(!v.pass) R.push('Prioritaskan pemenuhan syarat minimum (lingkungan & metodologi) hingga ambang lulus terpenuhi.');
@@ -309,21 +333,26 @@ function generateRecommendations(v){
   return R.join('\n');
 }
 
-/* ===== Wiring ===== */
+/* ===================== Wiring ===================== */
 let cancelRun=false, lastResult=null, lastText='', lastFile=null;
+
 el('#cancel').addEventListener('click', ()=>{ cancelRun=true; });
+
 el('#reset').addEventListener('click', ()=>{
   ['#status','#meta','#scores','#matrix','#evidence'].forEach(s=>{el(s).style.display='none'; el(s).innerHTML='';});
   showProgress(false); setProgress(0,''); el('#file').value=''; lastResult=null; lastText=''; lastFile=null;
 });
 
+/* Kirim ke worker dengan timeout 120 detik */
 function verifyInWorker(text){
   return new Promise((resolve,reject)=>{
     const onMsg = (ev)=>{ worker.removeEventListener('message',onMsg); resolve(ev.data.result);}
     worker.addEventListener('message', onMsg, {once:true});
     worker.postMessage({cmd:'verify', payload:{text}});
-    // optional timeout safeguard
-    setTimeout(()=>{ try{worker.removeEventListener('message',onMsg);}catch{}; reject(new Error('Verifikasi melewati batas waktu. Coba Mode Cepat atau unggah DOCX/TXT.')); }, 45000);
+    setTimeout(()=>{
+      try{ worker.removeEventListener('message',onMsg);}catch{}
+      reject(new Error('Verifikasi melewati batas waktu. Coba Mode Cepat atau unggah DOCX/TXT.'));
+    }, 120000); // 120s
   });
 }
 
@@ -339,13 +368,16 @@ el('#run').addEventListener('click', async ()=>{
     showProgress(true); setProgress(1,'Menyiapkan…');
 
     const fastMode = el('#fastMode').checked;
-    const text = await readFileAsText(file,{
+    const textRaw = await readFileAsText(file,{
       fastMode,
       onProgress:(pct,label)=>{
         if(cancelRun) throw new Error('Dibatalkan pengguna.');
         setProgress(pct,label);
       }
     });
+
+    // Batasi karakter yang sangat panjang (keamanan kinerja)
+    const text = textRaw.length > MAX_CHARS ? textRaw.slice(0, MAX_CHARS) : textRaw;
 
     setProgress(100,'Verifikasi (non-blocking)…');
     const v = await verifyInWorker(text);
@@ -364,7 +396,7 @@ el('#run').addEventListener('click', async ()=>{
   }
 });
 
-/* ===== Exporters ===== */
+/* ===================== Exporters ===================== */
 el('#exportJson').addEventListener('click', ()=>{
   if(!lastResult){ alert('Belum ada hasil. Jalankan verifikasi dulu.'); return; }
   const data = {
