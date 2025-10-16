@@ -413,13 +413,11 @@ el('#exportJson').addEventListener('click', ()=>{
 });
 
 el('#exportTxt').addEventListener('click', ()=>{
-  lines.push('Developed by Leonard Tiopan Panjaitan, MT, CGPS, CPS');
-  lines.push('Tanggal & Waktu: '+now);
-  lines.push('====================================================');
   if(!lastResult){ alert('Belum ada hasil. Jalankan verifikasi dulu.'); return; }
   const v=lastResult, fileName=(lastFile?.name||'report').replace(/\.[^.]+$/,'');
   const lines=[];
   lines.push('=== HASIL VERIFIKASI GP REPORT (APO Six Steps & Thirteen Tasks) ===');
+  lines.push('Developed by Leonard Tiopan Panjaitan, MT, CGPS, CPS');
   lines.push('Tanggal/Waktu   : '+new Date().toLocaleString('id-ID'));
   lines.push('Nama Berkas     : '+(lastFile?.name||'-'));
   lines.push('Status Akhir    : '+(v.pass?'SESUAI':'TIDAK SESUAI'));
